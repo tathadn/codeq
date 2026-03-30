@@ -21,6 +21,10 @@ __pycache__/
 *.safetensors
 *.bin
 
+# Claude context files
+CLAUDE_A.md
+CLAUDE_B.md
+
 # OS / editor
 .DS_Store
 *.swp
