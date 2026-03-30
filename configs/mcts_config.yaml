@@ -1,0 +1,27 @@
+# MCTS hyperparameters
+model_path: models/qwen2.5-coder-7b
+dataset_path: data/debugbench.json
+output_path: trajectories/round1.jsonl
+
+# Search parameters
+k_actions: 2            # Number of actions proposed per expansion
+max_rollouts: 10        # Number of MCTS rollouts per task
+max_depth: 2            # Maximum depth of rollout (rounds of revision in rewrite mode)
+c_exp: 1.414            # UCB1 exploration constant (sqrt(2))
+
+# Critic / preference blending
+alpha: 0.5              # Blend weight: Q = alpha * Q_mcts + (1-alpha) * Q_ai
+theta_threshold: 0.2    # Minimum Q-difference to create a preference pair
+
+# Generation temperatures
+propose_temperature: 0.8    # Temperature for action proposal (diversity)
+rank_temperature: 0.2       # Temperature for action ranking (consistency)
+
+use_rewrite_mode: true  # Use full rewrites as MCTS actions (false = structured edits)
+
+# Checkpoint frequency (append to JSONL every N tasks)
+checkpoint_every: 5
+
+# Logging
+log_level: INFO
+wandb_project: codeq-mcts

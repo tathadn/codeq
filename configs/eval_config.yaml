@@ -1,0 +1,19 @@
+# Evaluation settings
+test_set_path: data/test_set.json
+results_dir: results/
+
+# Evaluation modes: zero_shot, mcts
+default_mode: zero_shot
+
+# MCTS settings for eval (can be lighter than training)
+mcts_rollouts: 20
+mcts_depth: 5
+mcts_k_actions: 4
+
+# Generation
+max_new_tokens: 2048
+temperature: 0.2
+
+# Logging
+log_level: INFO
+wandb_project: codeq-eval

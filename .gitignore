@@ -1,0 +1,26 @@
+# Large model artifacts
+models/
+trajectories/
+checkpoints/
+
+# Data (large, managed separately)
+data/
+
+# Run outputs
+logs/
+results/
+
+# Python environments
+.venv/
+.python/
+__pycache__/
+*.pyc
+*.pyo
+
+# Model weights
+*.safetensors
+*.bin
+
+# OS / editor
+.DS_Store
+*.swp
