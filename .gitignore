@@ -25,6 +25,9 @@ __pycache__/
 CLAUDE_A.md
 CLAUDE_B.md
 
+# Sync rules (local reference only)
+SYNC_RULES.md
+
 # OS / editor
 .DS_Store
 *.swp
