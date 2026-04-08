@@ -625,6 +625,7 @@ class MCTSDebugger:
             encoded = self.tokenizer.apply_chat_template(
                 messages,
                 return_tensors="pt",
+                return_dict=True,
                 add_generation_prompt=True,
             )
             encoded = encoded.to(self.model.device)

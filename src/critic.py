@@ -216,7 +216,7 @@ class CriticRanker:
 
         try:
             encoded = self.tokenizer.apply_chat_template(
-                messages, return_tensors="pt", add_generation_prompt=True
+                messages, return_tensors="pt", return_dict=True, add_generation_prompt=True
             )
             encoded = encoded.to(self.model.device)
             input_len = encoded["input_ids"].shape[1]
