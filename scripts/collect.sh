@@ -20,8 +20,10 @@ echo "tmux session: ${SESSION}"
 # Check GPU availability before launching
 nvidia-smi || { echo "ERROR: nvidia-smi failed — check GPU"; exit 1; }
 
+VENV_PY="/home/lamassunobackup/tdebnath/codeqA/.venv/bin/python"
+
 tmux new-session -d -s "${SESSION}" \
-    "CUDA_VISIBLE_DEVICES=1 python3.11 -m src.mcts \
+    "CUDA_VISIBLE_DEVICES=0 ${VENV_PY} -m src.mcts \
         --config configs/mcts_config.yaml \
         --model ${MODEL} \
         --dataset data/debugbench.json \
