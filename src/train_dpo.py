@@ -48,7 +48,9 @@ class ModelConfig(BaseModel):
 
     Attributes:
         name_or_path: HuggingFace model ID or local path.
-        torch_dtype: Floating-point precision string ('bfloat16' or 'float16').
+        torch_dtype: Floating-point precision string ('bfloat16', 'float16',
+            or 'float32'). Use 'float32' for full-precision training to
+            eliminate mixed-precision NaN paths.
         attn_implementation: Attention backend ('flash_attention_2' or 'eager').
     """
 
@@ -99,7 +101,15 @@ class TrainingArgs(BaseModel):
         save_strategy: Checkpoint save strategy ('steps' or 'epoch').
         save_steps: Steps between checkpoint saves.
         warmup_ratio: Fraction of training used for LR warm-up.
-        bf16: Whether to use bf16 mixed precision.
+        max_grad_norm: Gradient clipping threshold.
+        max_steps: If > 0, stop after this many optimizer steps (overrides
+            num_train_epochs). Use for short diagnostic runs.
+        loss_type: DPO loss variant. ``"sigmoid"`` is the default DPO loss
+            (logsigmoid form, susceptible to large-margin overflow); ``"ipo"``
+            is Identity Preference Optimization (squared hinge form, more
+            numerically stable on noisy preferences).
+        bf16: Whether to use bf16 mixed precision (False for full fp32).
+        fp16: Whether to use fp16 mixed precision (False for full fp32).
         gradient_checkpointing: Whether to enable gradient checkpointing.
         report_to: Logging backend ('wandb', 'tensorboard', 'none').
         dataloader_num_workers: Number of DataLoader worker processes.
@@ -119,7 +129,11 @@ class TrainingArgs(BaseModel):
     save_strategy: str = "steps"
     save_steps: int = 100
     warmup_ratio: float = 0.1
+    max_grad_norm: float = 1.0
+    max_steps: int = 0
+    loss_type: str = "sigmoid"
     bf16: bool = True
+    fp16: bool = False
     gradient_checkpointing: bool = True
     report_to: str = "wandb"
     dataloader_num_workers: int = 4
@@ -193,8 +207,17 @@ def load_model_and_tokenizer(
     Raises:
         OSError: If the model directory does not exist.
     """
-    dtype_map = {"bfloat16": torch.bfloat16, "float16": torch.float16}
-    torch_dtype = dtype_map.get(cfg.torch_dtype, torch.bfloat16)
+    dtype_map = {
+        "bfloat16": torch.bfloat16,
+        "float16": torch.float16,
+        "float32": torch.float32,
+    }
+    if cfg.torch_dtype not in dtype_map:
+        raise ValueError(
+            f"Unknown torch_dtype {cfg.torch_dtype!r}; "
+            f"must be one of {sorted(dtype_map)}"
+        )
+    torch_dtype = dtype_map[cfg.torch_dtype]
 
     logger.info("Loading tokenizer from %s", model_path)
     tokenizer = AutoTokenizer.from_pretrained(str(model_path))
@@ -347,6 +370,7 @@ def run_training(
     output_dir: Path,
     args: TrainingArgs,
     round_num: int,
+    resume_from_checkpoint: str | None = None,
 ) -> None:
     """Run DPO fine-tuning and save the LoRA adapter.
 
@@ -368,30 +392,42 @@ def run_training(
     checkpoint_dir = Path(f"checkpoints/round{round_num}")
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
-    dpo_config = DPOConfig(
+    dpo_kwargs: dict[str, Any] = dict(
         output_dir=str(checkpoint_dir),
         num_train_epochs=args.num_train_epochs,
         per_device_train_batch_size=args.per_device_train_batch_size,
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         learning_rate=args.learning_rate,
         beta=args.beta,
+        loss_type=args.loss_type,
         max_length=args.max_length,
+        # Default truncation_mode is "keep_start", which would chop the
+        # COMPLETION when the concatenated prompt+completion overflows
+        # max_length — exactly the wrong direction for DPO. Force "keep_end"
+        # so the prompt is left-truncated and the completion is preserved.
+        truncation_mode="keep_end",
         logging_steps=args.logging_steps,
         eval_strategy=args.eval_strategy,
         eval_steps=args.eval_steps,
         save_strategy=args.save_strategy,
         save_steps=args.save_steps,
         warmup_ratio=args.warmup_ratio,
+        max_grad_norm=args.max_grad_norm,
         bf16=args.bf16,
+        fp16=args.fp16,
         gradient_checkpointing=args.gradient_checkpointing,
         report_to=args.report_to,
         dataloader_num_workers=args.dataloader_num_workers,
         seed=args.seed,
-        # Use pre-computed reference log-probs from the dataset columns.
-        # This tells DPOTrainer to skip running the reference model forward
-        # pass and instead use 'ref_chosen_logps' / 'ref_rejected_logps'.
-        precompute_ref_log_probs=True,
+        # Compute reference log-probs on-the-fly each step. Sharing the live
+        # forward path (same truncation, dtypes, and any logits patches)
+        # eliminates a deterministic loss explosion seen with precompute=True.
+        # PEFT ref is obtained by disabling adapters, so no extra VRAM.
+        precompute_ref_log_probs=False,
     )
+    if args.max_steps and args.max_steps > 0:
+        dpo_kwargs["max_steps"] = args.max_steps
+    dpo_config = DPOConfig(**dpo_kwargs)
 
     trainer = Fp32LogitsDPOTrainer(
         model=model,
@@ -403,7 +439,7 @@ def run_training(
     )
 
     logger.info("Starting DPO training — round %d", round_num)
-    trainer.train()
+    trainer.train(resume_from_checkpoint=resume_from_checkpoint)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     logger.info("Saving LoRA adapter to %s", output_dir)
@@ -451,6 +487,12 @@ def _parse_args() -> argparse.Namespace:
         default=1,
         help="Training round number (used for checkpoint sub-directory naming).",
     )
+    parser.add_argument(
+        "--resume_from_checkpoint",
+        type=str,
+        default=None,
+        help="Path to a checkpoint directory to resume training from.",
+    )
     return parser.parse_args()
 
 
@@ -497,6 +539,7 @@ def main() -> None:
         output_dir=args.output,
         args=cfg.training,
         round_num=args.round,
+        resume_from_checkpoint=args.resume_from_checkpoint,
     )
 
     wandb.finish()

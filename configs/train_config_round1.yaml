@@ -4,7 +4,7 @@
 model:
   # Path to the base model (downloaded once with huggingface-cli)
   name_or_path: "models/qwen2.5-coder-7b"
-  torch_dtype: "bfloat16"            # bf16 required for full-precision gradient training
+  torch_dtype: "float32"             # full-precision weights — eliminates bf16/fp16 NaN paths
   attn_implementation: "sdpa"
 
 lora:
@@ -24,21 +24,24 @@ lora:
 
 training:
   num_train_epochs: 2
-  per_device_train_batch_size: 2
-  gradient_accumulation_steps: 8     # effective batch size = 16
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 8     # effective batch size = 8
   learning_rate: 5.0e-6
   beta: 0.1                          # DPO temperature
-  max_length: 2048
+  loss_type: "sigmoid"               # default DPO loss; switch to "ipo" if sigmoid OOMs/NaNs
+  max_length: 1536
   max_prompt_length: 1024
-  logging_steps: 10
+  logging_steps: 1                   # log every step for early diagnosis
   eval_strategy: "steps"
   eval_steps: 50
   save_strategy: "steps"
   save_steps: 100
   warmup_ratio: 0.1
-  bf16: true
+  max_grad_norm: 1.0
+  bf16: false                        # full fp32 — no mixed precision
+  fp16: false
   gradient_checkpointing: true
-  report_to: "wandb"
+  report_to: "none"                  # WANDB_MODE=disabled equivalent
   dataloader_num_workers: 4
   seed: 42
 

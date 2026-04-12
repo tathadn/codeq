@@ -28,6 +28,43 @@ def setup_logging(level: str = "INFO", name: str = "codeq") -> logging.Logger:
     return logging.getLogger(name)
 
 
+def get_logger(name: str) -> logging.Logger:
+    """Return a module-scoped logger.
+
+    Thin wrapper over :func:`logging.getLogger` so callers can write
+    ``logger = get_logger(__name__)`` without having to import the stdlib
+    module everywhere. Logger configuration is the responsibility of the
+    application entry point (see :func:`setup_logging`).
+    """
+    return logging.getLogger(name)
+
+
+def load_preference_pairs(path: Path) -> list:
+    """Load preference pairs from a JSONL file written by ``preferences.py``.
+
+    Each line is the dict produced by ``PreferencePair.to_dict``. Unknown keys
+    are ignored so the loader tolerates schema additions. Imported lazily to
+    avoid a circular import via ``src.preferences``.
+
+    Args:
+        path: Path to the preference JSONL file.
+
+    Returns:
+        List of :class:`src.preferences.PreferencePair` instances.
+    """
+    from src.preferences import PreferencePair
+
+    fields = {
+        "prompt", "chosen", "rejected",
+        "q_chosen", "q_rejected", "task_id", "depth",
+    }
+    pairs: list[PreferencePair] = []
+    for record in load_jsonl(path):
+        kwargs = {k: v for k, v in record.items() if k in fields}
+        pairs.append(PreferencePair(**kwargs))
+    return pairs
+
+
 def load_jsonl(path: Path) -> Generator[dict, None, None]:
     """Yield records from a JSONL file.
 

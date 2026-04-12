@@ -1,0 +1,49 @@
+# DPO Round 2 — fp32 precision
+# Same numerical setup that worked for Round 1 (float32 weights, bf16/fp16 off,
+# batch=1) combined with Round 2 hyperparameters (lr=2e-6, 1 epoch, max_length=1024).
+
+model:
+  name_or_path: "models/qwen2.5-coder-7b"
+  torch_dtype: "float32"
+  attn_implementation: "sdpa"
+
+lora:
+  r: 32
+  lora_alpha: 64
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+  lora_dropout: 0.05
+  bias: "none"
+  task_type: "CAUSAL_LM"
+
+training:
+  num_train_epochs: 1
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 8     # effective batch size = 8
+  learning_rate: 2.0e-6
+  beta: 0.1
+  loss_type: "sigmoid"
+  max_length: 1024
+  logging_steps: 10
+  eval_strategy: "steps"
+  eval_steps: 20
+  save_strategy: "steps"
+  save_steps: 20
+  warmup_ratio: 0.1
+  max_grad_norm: 1.0
+  bf16: false
+  fp16: false
+  gradient_checkpointing: true
+  report_to: "none"
+  dataloader_num_workers: 4
+  seed: 42
+
+wandb:
+  project: "codeq-dpo"
+  entity: null
